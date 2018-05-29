@@ -5,6 +5,7 @@ import java.io.File;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TabPane.TabClosingPolicy;
 import javafx.scene.layout.Pane;
+import javafx.stage.FileChooser;
 
 public class EditorView extends Pane {
 	private TabPane tabPane;
@@ -16,7 +17,7 @@ public class EditorView extends Pane {
 		getChildren().add(tabPane);
 		
 		openTab(null);
-		//openTab(new File("test.txt"));
+		openTab(new File("test.txt"));
 		openTab(new File("main.cpp"));
 	}
 	
@@ -30,6 +31,16 @@ public class EditorView extends Pane {
 		if (index < tabPane.getTabs().size()) {
 			tabPane.getTabs().remove(index);
 		}
+	}
+	
+	public void openFile() {
+		FileChooser fileChooser = new FileChooser();
+		File result = fileChooser.showOpenDialog(null);
+		openTab(result);
+	}
+	
+	public void closeCurrentTab() {
+		closeTab(getCurrentTab());
 	}
 	
 	public int getCurrentTab() {

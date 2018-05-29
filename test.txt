@@ -34,3 +34,6 @@
 - multiple cursors
 - fix bug where font size is incorrect
 - fix bug where keyboard input is not recognized
+
+- outsource tokenizer and highlighter to files
+- add more font options to highlighter

@@ -34,18 +34,18 @@ public class Main extends Application {
 			public void handle(KeyEvent event) {
 				switch (event.getCode()) {
 				case F11:
-					EditorEvent.invoke("Editor.toggleFullscreen");
+					editor.invoke("App.toggleFullscreen");
 					break;
 				
 				case O:
 					if (event.isControlDown()) {
-						EditorEvent.invoke("Editor.openFile");
+						editor.invoke("Editor.openFile");
 					}
 					break;
 				
 				case W:
 					if (event.isControlDown()) {
-						EditorEvent.invoke("Editor.closeCurrentTab");
+						editor.invoke("Editor.closeCurrentTab");
 					}
 					break;
 				

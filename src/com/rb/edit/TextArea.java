@@ -8,8 +8,13 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-import com.rb.edit.Tokenizer.Rule;
 import com.rb.edit.Tokenizer.Token;
+import com.rb.edit.highlighting.DefaultHighlighter;
+import com.rb.edit.highlighting.DefaultTokenizer;
+import com.rb.edit.highlighting.lang.Cpp.CppHighlighter;
+import com.rb.edit.highlighting.lang.Cpp.CppTokenizer;
+import com.rb.edit.highlighting.lang.Cs.CsHighlighter;
+import com.rb.edit.highlighting.lang.Cs.CsTokenizer;
 
 import javafx.geometry.Bounds;
 import javafx.scene.canvas.Canvas;
@@ -31,6 +36,7 @@ public class TextArea extends Canvas {
 	
 	private List<Line>			lines;
 	private Tokenizer			tokenizer;
+	private Highlighter			highlighter;
 	
 	
 	public TextArea(File file, double width, double height) {
@@ -38,21 +44,44 @@ public class TextArea extends Canvas {
 		this.file = file;
 		this.lines = new ArrayList<Line>();
 		
-		this.tokenizer = new Tokenizer();
-		this.tokenizer.addRule(new Rule("int", "keyword"));
-		this.tokenizer.addRule(new Rule("return", "keyword"));
-		this.tokenizer.addRule(new Rule("(", "bracket"));
-		this.tokenizer.addRule(new Rule(")", "bracket"));
-		
 		if (file != null) {
 			loadFile();
 		}
+		
+		this.tokenizer = tokenizer == null ? new DefaultTokenizer() : tokenizer;
+		this.highlighter = highlighter == null ? new DefaultHighlighter() : highlighter;
 	}
 	
 	private void loadFile() {
 		lines.clear();
 		
 		try {
+			String[] filepath = file.getAbsolutePath().split("\\\\");
+			String[] filename = filepath[filepath.length - 1].split("\\.");
+			String extension = filename.length == 0 ? null : filename[1];
+			
+			switch (extension) {
+			case "h":
+			case "c":
+			case "hh":
+			case "cc":
+			case "hpp":
+			case "cpp":
+				tokenizer = new CppTokenizer();
+				highlighter = new CppHighlighter();
+				break;
+			
+			case "cs":
+				tokenizer = new CsTokenizer();
+				highlighter = new CsHighlighter();
+				break;
+			
+			default:
+				tokenizer = new DefaultTokenizer();
+				highlighter = new DefaultHighlighter();
+				break;
+			}
+			
 			BufferedReader reader = new BufferedReader(new FileReader(file));
 			String line = null;
 			while ((line = reader.readLine()) != null) {
@@ -78,9 +107,10 @@ public class TextArea extends Canvas {
 			for (int j = 0; j < lines.get(i).tokens.size(); j++) {
 				String line = lines.get(i).tokens.get(j).str;
 				String type = lines.get(i).tokens.get(j).type;
-				int color = getColor(type);
+				int color = type == null ? highlighter.getDefaultColor() : highlighter.getColor(type);
 				
-				g.setFill(Color.rgb((color & 0xFF0000) >> 16, (color & 0x00FF00) >> 8, (color & 0x0000FF) >> 0));
+				Color fillColor = Color.rgb((color & 0xFF0000) >> 16, (color & 0x00FF00) >> 8, (color & 0x0000FF) >> 0);
+				g.setFill(fillColor);
 				g.fillText(line, x, i * FONT_SIZE + FONT_SIZE);
 				
 				Text text = new Text(line);
@@ -91,17 +121,6 @@ public class TextArea extends Canvas {
 			}
 		}
 	}
-	
-	private int getColor(String type) {
-		if (type != null && type.equals("keyword")) {
-			return 0x0058d0;
-		} else if (type != null && type.equals("bracket")) {
-			return 0x31a0e0;
-		} else {
-			return 0xcbcdcf;
-		}
-	}
-	
 	
 	private static class Line {
 		private TextArea	area;
