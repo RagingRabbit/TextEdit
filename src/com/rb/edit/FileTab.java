@@ -5,10 +5,13 @@ import java.io.File;
 import javafx.scene.control.Tab;
 
 public class FileTab extends Tab {
-	private TextArea textArea;
+	private EditorView	view;
+	private TextArea	textArea;
 	
 	
-	public FileTab(File file, double width, double height) {
+	public FileTab(EditorView view, File file, double width, double height) {
+		this.view = view;
+		
 		if (file == null) {
 			setText("untitled");
 		} else {
@@ -17,11 +20,19 @@ public class FileTab extends Tab {
 			setText(filename);
 		}
 		
-		textArea = new TextArea(file, width, height);
+		textArea = new TextArea(this, file, width, height);
 		setContent(textArea);
+	}
+	
+	public void update() {
+		textArea.update();
 	}
 	
 	public void draw() {
 		textArea.draw();
+	}
+	
+	public EditorView getView() {
+		return view;
 	}
 }

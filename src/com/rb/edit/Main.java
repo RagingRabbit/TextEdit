@@ -8,6 +8,9 @@ import javafx.scene.layout.BorderPane;
 import javafx.stage.Stage;
 
 public class Main extends Application {
+	private static Main	instance;
+	
+	
 	private BorderPane	layout;
 	private Scene		scene;
 	
@@ -54,10 +57,30 @@ public class Main extends Application {
 				}
 			}
 		});
+		
+		instance = this;
+	}
+	
+	@Override
+	public void stop() throws Exception {
+		editor.stop();
 	}
 	
 	
 	public static void main(String[] args) {
+		Thread thread = new Thread(() -> {
+			while (instance == null) {
+				try {
+					Thread.sleep(1);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+			}
+			
+			instance.editor.run();
+		});
+		thread.start();
+		
 		launch(args);
 	}
 }

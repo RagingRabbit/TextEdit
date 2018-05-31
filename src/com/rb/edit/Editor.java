@@ -16,12 +16,35 @@ public class Editor extends GridPane {
 	private Stage		stage;
 	private EditorView	view;
 	
+	private boolean		running;
+	
 	
 	public void init(Stage stage) {
 		this.stage = stage;
 		
 		view = new EditorView();
 		add(view, 0, 0);
+	}
+	
+	public void run() {
+		running = true;
+		while (running) {
+			update();
+			
+			try {
+				Thread.sleep(1);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+		}
+	}
+	
+	public void stop() {
+		running = false;
+	}
+	
+	private void update() {
+		view.update();
 	}
 	
 	public void invoke(String command) {

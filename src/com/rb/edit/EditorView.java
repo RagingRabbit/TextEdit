@@ -14,6 +14,7 @@ public class EditorView extends Pane {
 	public EditorView() {
 		tabPane = new TabPane();
 		tabPane.setTabClosingPolicy(TabClosingPolicy.ALL_TABS);
+		tabPane.setFocusTraversable(false);
 		getChildren().add(tabPane);
 		
 		openTab(null);
@@ -22,7 +23,7 @@ public class EditorView extends Pane {
 	}
 	
 	public void openTab(File file) {
-		FileTab newTab = new FileTab(file, 1920, 1050);
+		FileTab newTab = new FileTab(this, file, 1920, 1050);
 		tabPane.getTabs().add(newTab);
 		tabPane.getSelectionModel().select(tabPane.getTabs().size() - 1);
 	}
@@ -45,6 +46,12 @@ public class EditorView extends Pane {
 	
 	public int getCurrentTab() {
 		return tabPane.getSelectionModel().getSelectedIndex();
+	}
+	
+	public void update() {
+		if (tabPane.getTabs().size() > 0) {
+			((FileTab) tabPane.getTabs().get(tabPane.getSelectionModel().getSelectedIndex())).update();
+		}
 	}
 	
 	@Override

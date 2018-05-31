@@ -19,6 +19,7 @@ import com.rb.edit.highlighting.lang.Cs.CsTokenizer;
 import javafx.geometry.Bounds;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontPosture;
@@ -32,15 +33,22 @@ public class TextArea extends Canvas {
 	private static final int	BACKGROUND_COLOR	= 0x1C1F22;
 	
 	
+	private FileTab				tab;
+	
 	private File				file;
 	
 	private List<Line>			lines;
 	private Tokenizer			tokenizer;
 	private Highlighter			highlighter;
 	
+	private int					cursorX, cursorY;
+	private boolean				cursorActive;
+	private int					cursorTimerOffset;
 	
-	public TextArea(File file, double width, double height) {
+	
+	public TextArea(FileTab tab, File file, double width, double height) {
 		super(width, height);
+		this.tab = tab;
 		this.file = file;
 		this.lines = new ArrayList<Line>();
 		
@@ -50,6 +58,50 @@ public class TextArea extends Canvas {
 		
 		this.tokenizer = tokenizer == null ? new DefaultTokenizer() : tokenizer;
 		this.highlighter = highlighter == null ? new DefaultHighlighter() : highlighter;
+		
+		setFocusTraversable(true);
+		setOnKeyPressed(e -> {
+			e.consume();
+			onKeyPress(e);
+		});
+	}
+	
+	private void onKeyPress(KeyEvent e) {
+		switch (e.getCode()) {
+		case LEFT:
+			if (cursorX > 0) {
+				cursorX--;
+				updateCursorState();
+			}
+			break;
+		case RIGHT:
+			cursorX++;
+			if (cursorX < lines.get(cursorY).raw.length() - 1) {
+				cursorX++;
+				updateCursorState();
+			}
+			break;
+		case UP:
+			if (cursorY > 0) {
+				cursorY--;
+				updateCursorState();
+			}
+			break;
+		case DOWN:
+			if (cursorY < lines.size() - 1) {
+				cursorY++;
+				updateCursorState();
+			}
+			break;
+		default:
+			break;
+		}
+	}
+	
+	private void updateCursorState() {
+		if (cursorActive = System.currentTimeMillis() % 1000 >= 500) {
+			cursorTimerOffset = 0;
+		}
 	}
 	
 	private void loadFile() {
@@ -95,6 +147,11 @@ public class TextArea extends Canvas {
 		}
 	}
 	
+	public void update() {
+		cursorActive = System.currentTimeMillis() % 1000 < 500;
+		tab.getView().requestLayout();
+	}
+	
 	public void draw() {
 		GraphicsContext g = getGraphicsContext2D();
 		
@@ -104,22 +161,39 @@ public class TextArea extends Canvas {
 		
 		for (int i = 0; i < lines.size(); i++) {
 			int x = 0;
+			int length = 0;
 			for (int j = 0; j < lines.get(i).tokens.size(); j++) {
 				String line = lines.get(i).tokens.get(j).str;
 				String type = lines.get(i).tokens.get(j).type;
 				int color = type == null ? highlighter.getDefaultColor() : highlighter.getColor(type);
 				
+				int yy = i * FONT_SIZE + FONT_SIZE;
+				if (yy > getHeight()) {
+					i = lines.size();
+					break;
+				}
+				
 				Color fillColor = Color.rgb((color & 0xFF0000) >> 16, (color & 0x00FF00) >> 8, (color & 0x0000FF) >> 0);
 				g.setFill(fillColor);
-				g.fillText(line, x, i * FONT_SIZE + FONT_SIZE);
+				g.fillText(line, x, yy);
 				
-				Text text = new Text(line);
-				text.setFont(g.getFont());
-				Bounds tb = text.getBoundsInLocal();
+				int tokenLengthPixels = getWordLengthPixels(g.getFont(), line);
+				if (cursorActive && i == cursorY && length <= cursorX && length + line.length() > cursorX) {
+					g.setFill(Color.WHITE);
+					g.fillText("|", x + getWordLengthPixels(g.getFont(), line.substring(0, cursorX - length)) - 2, yy);
+				}
 				
-				x += tb.getWidth();
+				x += tokenLengthPixels;
+				length += line.length();
 			}
 		}
+	}
+	
+	private int getWordLengthPixels(Font font, String str) {
+		Text text = new Text(str);
+		text.setFont(font);
+		Bounds tb = text.getBoundsInLocal();
+		return (int) tb.getWidth();
 	}
 	
 	private static class Line {
