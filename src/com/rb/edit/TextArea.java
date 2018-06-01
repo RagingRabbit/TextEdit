@@ -42,8 +42,8 @@ public class TextArea extends Canvas {
 	private Highlighter			highlighter;
 	
 	private int					cursorX, cursorY;
-	private boolean				cursorActive;
-	private int					cursorTimerOffset;
+	private long				lastFrame;
+	private long				cursorTimer;
 	
 	
 	public TextArea(FileTab tab, File file, double width, double height) {
@@ -58,28 +58,27 @@ public class TextArea extends Canvas {
 		
 		this.tokenizer = tokenizer == null ? new DefaultTokenizer() : tokenizer;
 		this.highlighter = highlighter == null ? new DefaultHighlighter() : highlighter;
-		
-		setFocusTraversable(true);
-		setOnKeyPressed(e -> {
-			e.consume();
-			onKeyPress(e);
-		});
 	}
 	
-	private void onKeyPress(KeyEvent e) {
+	void onKeyPress(KeyEvent e) {
 		switch (e.getCode()) {
 		case LEFT:
 			if (cursorX > 0) {
 				cursorX--;
-				updateCursorState();
+			} else if (cursorY > 0) {
+				cursorY--;
+				cursorX = lines.get(cursorY).raw.length();
 			}
+			updateCursorState();
 			break;
 		case RIGHT:
-			cursorX++;
-			if (cursorX < lines.get(cursorY).raw.length() - 1) {
+			if (cursorX < lines.get(cursorY).raw.length()) {
 				cursorX++;
-				updateCursorState();
+			} else if (cursorY < lines.size() - 1) {
+				cursorY++;
+				cursorX = 0;
 			}
+			updateCursorState();
 			break;
 		case UP:
 			if (cursorY > 0) {
@@ -93,15 +92,49 @@ public class TextArea extends Canvas {
 				updateCursorState();
 			}
 			break;
+		case BACK_SPACE:
+			if (cursorX > 0) {
+				deleteCharacter(cursorX - 1, cursorY);
+				cursorX--;
+			} else if (cursorY > 0) {
+				cursorX = lines.get(cursorY - 1).raw.length();
+				cursorY--;
+				joinLines(cursorY, cursorY + 1);
+			}
+			updateCursorState();
+			break;
 		default:
 			break;
 		}
 	}
 	
-	private void updateCursorState() {
-		if (cursorActive = System.currentTimeMillis() % 1000 >= 500) {
-			cursorTimerOffset = 0;
+	void onKeyTyped(KeyEvent e) {
+		if (e.getCharacter().length() > 0 && !Character.isISOControl(e.getCharacter().toCharArray()[0])) {
+			insertCharacter(cursorX, cursorY, e.getCharacter());
+			cursorX++;
 		}
+	}
+	
+	private void joinLines(int first, int second) {
+		lines.get(first).setLine(lines.get(first).raw + lines.get(second).raw);
+		lines.remove(second);
+	}
+	
+	private void insertCharacter(int x, int y, String chars) {
+		String line = lines.get(y).raw;
+		String newLine = line.substring(0, x) + chars + line.substring(x);
+		lines.get(y).setLine(newLine);
+	}
+	
+	private void deleteCharacter(int x, int y) {
+		String line = lines.get(y).raw;
+		String newLine = line.substring(0, x) + line.substring(x + 1);
+		lines.get(y).setLine(newLine);
+	}
+	
+	private void updateCursorState() {
+		//cursorX = Math.min(Math.max(cursorX, 0), lines.get(cursorY).raw.length());
+		cursorTimer = 0;
 	}
 	
 	private void loadFile() {
@@ -148,7 +181,9 @@ public class TextArea extends Canvas {
 	}
 	
 	public void update() {
-		cursorActive = System.currentTimeMillis() % 1000 < 500;
+		long now = System.currentTimeMillis();
+		cursorTimer += (now - lastFrame);
+		lastFrame = now;
 		tab.getView().requestLayout();
 	}
 	
@@ -158,6 +193,8 @@ public class TextArea extends Canvas {
 		g.setFill(Color.web("#" + Integer.toHexString(BACKGROUND_COLOR)));
 		g.fillRect(0, 0, getWidth(), getHeight());
 		g.setFont(Font.font(FONT_FACE, FontWeight.BLACK, FontPosture.REGULAR, FONT_SIZE));
+		
+		boolean cursorActive = cursorTimer % 1000 < 500;
 		
 		for (int i = 0; i < lines.size(); i++) {
 			int x = 0;
@@ -178,7 +215,7 @@ public class TextArea extends Canvas {
 				g.fillText(line, x, yy);
 				
 				int tokenLengthPixels = getWordLengthPixels(g.getFont(), line);
-				if (cursorActive && i == cursorY && length <= cursorX && length + line.length() > cursorX) {
+				if (cursorActive && i == cursorY && length <= cursorX && length + line.length() >= cursorX) {
 					g.setFill(Color.WHITE);
 					g.fillText("|", x + getWordLengthPixels(g.getFont(), line.substring(0, cursorX - length)) - 2, yy);
 				}

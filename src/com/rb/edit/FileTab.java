@@ -3,6 +3,7 @@ package com.rb.edit;
 import java.io.File;
 
 import javafx.scene.control.Tab;
+import javafx.scene.input.KeyEvent;
 
 public class FileTab extends Tab {
 	private EditorView	view;
@@ -22,6 +23,14 @@ public class FileTab extends Tab {
 		
 		textArea = new TextArea(this, file, width, height);
 		setContent(textArea);
+	}
+	
+	void onKeyPress(KeyEvent e) {
+		textArea.onKeyPress(e);
+	}
+	
+	void onKeyTyped(KeyEvent e) {
+		textArea.onKeyTyped(e);
 	}
 	
 	public void update() {

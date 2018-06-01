@@ -34,21 +34,18 @@ public class Tokenizer {
 		List<Token> newTokens = new ArrayList<Token>();
 		Rule rule = rules.get(ruleIndex);
 		
-		int lastIndex = -1;
-		int currentIndex = -1;
+		int[] lastIndices = null;
+		int[] currentIndices = null;
 		
 		boolean found = false;
-		int[] indices;
-		while ((indices = rule.getIndices(token.str, currentIndex + 1)) != null) {
-			currentIndex = indices[0];
+		while ((currentIndices = rule.getIndices(token.str, currentIndices == null ? 0 : currentIndices[1])) != null) {
 			found = true;
-			int tokenLength = indices[1] - indices[0];
 			
-			if (lastIndex == -1) {
-				if (currentIndex > 0) {
+			if (lastIndices == null) {
+				if (currentIndices[0] > 0) {
 					// Add two tokens
-					Token preRegexToken = new Token(token.str.substring(0, currentIndex), token.type);
-					Token regexToken = new Token(rule.getSequence(token.str, indices), rule.type);
+					Token preRegexToken = new Token(token.str.substring(0, currentIndices[0]), token.type);
+					Token regexToken = new Token(rule.getSequence(token.str, currentIndices), rule.type);
 					
 					List<Token> processedTokens = processRule(preRegexToken, ruleIndex + 1);
 					if (processedTokens != null) {
@@ -61,15 +58,15 @@ public class Tokenizer {
 					newTokens.add(regexToken);
 				} else {
 					// Add this token
-					Token regexToken = new Token(rule.getSequence(token.str, indices), rule.type);
+					Token regexToken = new Token(rule.getSequence(token.str, currentIndices), rule.type);
 					newTokens.add(regexToken);
 				}
 			} else {
-				int lastTokenEnd = lastIndex + tokenLength;
-				if (currentIndex > lastTokenEnd) {
+				int lastTokenEnd = lastIndices[1];
+				if (currentIndices[0] > lastTokenEnd) {
 					// Add two tokens
-					Token preRegexToken = new Token(token.str.substring(lastTokenEnd, currentIndex), token.type);
-					Token regexToken = new Token(rule.getSequence(token.str, indices), rule.type);
+					Token preRegexToken = new Token(token.str.substring(lastTokenEnd, currentIndices[0]), token.type);
+					Token regexToken = new Token(rule.getSequence(token.str, currentIndices), rule.type);
 					
 					List<Token> processedTokens = processRule(preRegexToken, ruleIndex + 1);
 					if (processedTokens != null) {
@@ -82,16 +79,16 @@ public class Tokenizer {
 					newTokens.add(regexToken);
 				} else {
 					// Add this token
-					Token regexToken = new Token(rule.getSequence(token.str, indices), rule.type);
+					Token regexToken = new Token(rule.getSequence(token.str, currentIndices), rule.type);
 					newTokens.add(regexToken);
 				}
 			}
 			
-			lastIndex = currentIndex;
+			lastIndices = currentIndices;
 			
-			if (currentIndex + tokenLength < token.str.length() && rule.getIndices(token.str, currentIndex + 1) == null) {
+			if (currentIndices[1] < token.str.length() && rule.getIndices(token.str, currentIndices[1]) == null) {
 				// This was the last found occurence of the regex
-				Token lastToken = new Token(token.str.substring(currentIndex + tokenLength), token.type);
+				Token lastToken = new Token(token.str.substring(currentIndices[1]), token.type);
 				
 				List<Token> processedTokens = processRule(lastToken, ruleIndex + 1);
 				if (processedTokens != null) {
@@ -131,20 +128,30 @@ public class Tokenizer {
 	}
 	
 	public static class KeywordRule extends Rule {
-		private String regex;
+		private String	regex;
+		private boolean	wordStrict;
 		
 		
-		public KeywordRule(String regex, String type) {
+		public KeywordRule(String regex, String type, boolean wordStrict) {
 			super(type);
 			this.regex = regex;
+			this.wordStrict = wordStrict;
 		}
 		
 		@Override
 		public int[] getIndices(String input, int fromIndex) {
 			int index = input.indexOf(regex, fromIndex);
-			if (index != -1) {
-				int length = regex.length();
-				return new int[] { index, index + length };
+			while (index != -1) {
+				char[] chars = input.toCharArray();
+				// Check if the word is supposed to be isolated from the rest of the text
+				if (!wordStrict || (index == 0 || chars[index - 1] == ' ' || chars[index - 1] == '\t')
+						&& (index + regex.length() == chars.length || chars[index + regex.length()] == ' ' || chars[index + regex.length()] == '\t')) {
+					int length = regex.length();
+					return new int[] { index, index + length };
+				} else {
+					// If the found occurence is not strictly isolated, search for a new one
+					index = input.indexOf(regex, index + regex.length());
+				}
 			}
 			return null;
 		}
