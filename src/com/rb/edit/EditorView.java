@@ -5,15 +5,19 @@ import java.io.File;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TabPane.TabClosingPolicy;
 import javafx.scene.input.KeyEvent;
+import javafx.scene.input.ScrollEvent;
 import javafx.scene.layout.Pane;
 import javafx.stage.FileChooser;
 
 public class EditorView extends Pane {
+	private Editor	editor;
 	private TabPane	tabPane;
 	private int		selectedTab;
 	
 	
-	public EditorView() {
+	public EditorView(Editor editor) {
+		this.editor = editor;
+		
 		tabPane = new TabPane();
 		tabPane.setTabClosingPolicy(TabClosingPolicy.ALL_TABS);
 		tabPane.setOnKeyPressed(e -> {
@@ -25,6 +29,9 @@ public class EditorView extends Pane {
 		});
 		tabPane.setOnMousePressed(e -> {
 			selectTab(tabPane.getSelectionModel().getSelectedIndex());
+		});
+		tabPane.setOnScroll(e -> {
+			onScroll(e);
 		});
 		getChildren().add(tabPane);
 		
@@ -57,6 +64,12 @@ public class EditorView extends Pane {
 	
 	public void selectTab(int index) {
 		selectedTab = index;
+		if (selectedTab == -1) {
+			selectedTab = tabPane.getTabs().size() - 1;
+		} else if (selectedTab == tabPane.getTabs().size()) {
+			selectedTab = 0;
+		}
+		tabPane.getSelectionModel().select(selectedTab);
 	}
 	
 	public void closeCurrentTab() {
@@ -77,16 +90,54 @@ public class EditorView extends Pane {
 	protected void layoutChildren() {
 		super.layoutChildren();
 		
-		if (tabPane.getTabs().size() > 0) {
+		if (!tabPane.getTabs().isEmpty()) {
 			((FileTab) tabPane.getTabs().get(tabPane.getSelectionModel().getSelectedIndex())).draw();
 		}
 	}
 	
 	void onKeyPress(KeyEvent e) {
-		((FileTab) tabPane.getTabs().get(tabPane.getSelectionModel().getSelectedIndex())).onKeyPress(e);
+		switch (e.getCode()) {
+		case F11:
+			editor.toggleFullscreen();
+			break;
+		
+		case O:
+			if (e.isControlDown()) {
+				openFile();
+			}
+			break;
+		
+		case W:
+			if (e.isControlDown()) {
+				closeCurrentTab();
+			}
+			break;
+		case TAB:
+			if (e.isControlDown()) {
+				if (e.isShiftDown()) {
+					selectTab(selectedTab - 1);
+				} else {
+					selectTab(selectedTab + 1);
+				}
+				break;
+			}
+		default:
+			if (!tabPane.getTabs().isEmpty()) {
+				((FileTab) tabPane.getTabs().get(tabPane.getSelectionModel().getSelectedIndex())).onKeyPress(e);
+			}
+			break;
+		}
 	}
 	
 	void onKeyTyped(KeyEvent e) {
-		((FileTab) tabPane.getTabs().get(tabPane.getSelectionModel().getSelectedIndex())).onKeyTyped(e);
+		if (!tabPane.getTabs().isEmpty()) {
+			((FileTab) tabPane.getTabs().get(tabPane.getSelectionModel().getSelectedIndex())).onKeyTyped(e);
+		}
+	}
+	
+	void onScroll(ScrollEvent e) {
+		if (!tabPane.getTabs().isEmpty()) {
+			((FileTab) tabPane.getTabs().get(tabPane.getSelectionModel().getSelectedIndex())).onScroll(e);
+		}
 	}
 }

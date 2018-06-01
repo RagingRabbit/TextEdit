@@ -6,7 +6,7 @@ import com.rb.edit.Tokenizer;
 public class Cs {
 	public static class CsTokenizer extends Tokenizer {
 		public CsTokenizer() {
-			addRule(new BeginRule("//", "single-line-comment"));
+			addRule(new BeginRule("//", "single-line-comment", false));
 			addRule(new BeginEndRule("\"", "\"", "string-literal"));
 			
 			addRule(new KeywordRule("(", "bracket", false));

@@ -4,7 +4,7 @@ import com.rb.edit.Tokenizer;
 
 public class DefaultTokenizer extends Tokenizer {
 	public DefaultTokenizer() {
-		addRule(new BeginRule("//", "single-line-comment"));
+		addRule(new BeginRule("//", "single-line-comment", false));
 		addRule(new BeginEndRule("\"", "\"", "string-literal"));
 		addRule(new BeginEndRule("'", "'", "character-literal"));
 		addRule(new KeywordRule("(", "bracket", false));

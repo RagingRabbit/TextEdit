@@ -4,6 +4,7 @@ import java.io.File;
 
 import javafx.scene.control.Tab;
 import javafx.scene.input.KeyEvent;
+import javafx.scene.input.ScrollEvent;
 
 public class FileTab extends Tab {
 	private EditorView	view;
@@ -31,6 +32,10 @@ public class FileTab extends Tab {
 	
 	void onKeyTyped(KeyEvent e) {
 		textArea.onKeyTyped(e);
+	}
+	
+	void onScroll(ScrollEvent e) {
+		textArea.onScroll(e);
 	}
 	
 	public void update() {

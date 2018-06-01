@@ -163,19 +163,22 @@ public class Tokenizer {
 	}
 	
 	public static class BeginRule extends Rule {
-		private String begin;
+		private String	begin;
+		private boolean	stopAtWhitespace;
 		
 		
-		public BeginRule(String begin, String type) {
+		public BeginRule(String begin, String type, boolean stopAtWhitespace) {
 			super(type);
 			this.begin = begin;
+			this.stopAtWhitespace = stopAtWhitespace;
 		}
 		
 		@Override
 		public int[] getIndices(String input, int fromIndex) {
 			int beginIndex = input.indexOf(begin, fromIndex);
+			int whitespaceIndex = stopAtWhitespace ? input.indexOf(' ', beginIndex + 1) : -1;
 			if (beginIndex != -1) {
-				return new int[] { beginIndex, input.length() };
+				return new int[] { beginIndex, whitespaceIndex == -1 ? input.length() : whitespaceIndex };
 			}
 			return null;
 		}

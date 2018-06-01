@@ -6,9 +6,9 @@ import com.rb.edit.Tokenizer;
 public class Cpp {
 	public static class CppTokenizer extends Tokenizer {
 		public CppTokenizer() {
-			addRule(new BeginRule("//", "single-line-comment"));
+			addRule(new BeginRule("//", "single-line-comment", false));
 			addRule(new BeginEndRule("\"", "\"", "string-literal"));
-			addRule(new BeginEndRule("#", " ", "preprocessor"));
+			addRule(new BeginRule("#", "preprocessor", true));
 			
 			addRule(new KeywordRule("(", "bracket", false));
 			addRule(new KeywordRule(")", "bracket", false));

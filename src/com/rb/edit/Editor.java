@@ -22,7 +22,7 @@ public class Editor extends GridPane {
 	public void init(Stage stage) {
 		this.stage = stage;
 		
-		view = new EditorView();
+		view = new EditorView(this);
 		add(view, 0, 0);
 	}
 	

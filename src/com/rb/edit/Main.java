@@ -32,32 +32,6 @@ public class Main extends Application {
 		
 		editor.init(primaryStage);
 		
-		scene.setOnKeyPressed(new EventHandler<KeyEvent>() {
-			@Override
-			public void handle(KeyEvent event) {
-				switch (event.getCode()) {
-				case F11:
-					editor.invoke("App.toggleFullscreen");
-					break;
-				
-				case O:
-					if (event.isControlDown()) {
-						editor.invoke("Editor.openFile");
-					}
-					break;
-				
-				case W:
-					if (event.isControlDown()) {
-						editor.invoke("Editor.closeCurrentTab");
-					}
-					break;
-				
-				default:
-					break;
-				}
-			}
-		});
-		
 		instance = this;
 	}
 	
