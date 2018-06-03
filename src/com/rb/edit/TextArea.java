@@ -37,10 +37,13 @@ public class TextArea extends Tab {
 	private static final int	BACKGROUND_COLOR		= 0x1C1F22;
 	private static final int	CURSOR_COLOR			= 0xffffff;
 	
+	private static final int	PADDING_TOP				= 5;
+	
 	private static final int	LINE_NUMBERS_WIDTH		= 6;
 	private static final int	LINE_NUMBERS_COLOR		= 0xffffff;
 	
-	private static final int	PADDING_TOP				= 5;
+	private static final int	MIN_SELECTION_WIDTH		= 5;
+	private static final int	SELECTION_COLOR			= 0x003B68;
 	
 	private static final double	SCROLL_LERP_SPEED		= 20.0;
 	private static final double	SCROLL_CTRL_MULTIPLIER	= 5.0;
@@ -71,6 +74,8 @@ public class TextArea extends Tab {
 	private double				scrollY;
 	private double				destScrollY;
 	
+	private Selection			selection;
+	
 	
 	public TextArea(EditorView view, File file, double width, double height) {
 		this.view = view;
@@ -100,8 +105,13 @@ public class TextArea extends Tab {
 	}
 	
 	void onKeyPress(KeyEvent e) {
+		int oldCursorX, oldCursorY;
+		
 		switch (e.getCode()) {
 		case LEFT:
+			oldCursorX = cursorX;
+			oldCursorY = cursorY;
+			
 			if (cursorX > 0) {
 				if (e.isControlDown()) {
 					cursorX -= getPreviousWordSpan(cursorX, cursorY);
@@ -113,9 +123,14 @@ public class TextArea extends Tab {
 				cursorX = lines.get(cursorY).raw.length();
 				tmpCursorX = cursorX;
 			}
+			
 			resetCursor(true);
+			updateSelection(e, oldCursorX, oldCursorY);
 			break;
 		case RIGHT:
+			oldCursorX = cursorX;
+			oldCursorY = cursorY;
+			
 			if (cursorX < lines.get(cursorY).raw.length()) {
 				if (e.isControlDown()) {
 					cursorX += getNextWordSpan(cursorX, cursorY);
@@ -127,9 +142,14 @@ public class TextArea extends Tab {
 				cursorX = 0;
 				tmpCursorX = cursorX;
 			}
+			
 			resetCursor(true);
+			updateSelection(e, oldCursorX, oldCursorY);
 			break;
 		case UP:
+			oldCursorX = cursorX;
+			oldCursorY = cursorY;
+			
 			if (cursorY > 0) {
 				cursorY--;
 				if (uncappedCursorX == -1) {
@@ -137,11 +157,15 @@ public class TextArea extends Tab {
 				} else {
 					cursorX = uncappedCursorX;
 				}
-				tmpCursorX = cursorX;
+				
 				resetCursor(false);
+				updateSelection(e, oldCursorX, oldCursorY);
 			}
 			break;
 		case DOWN:
+			oldCursorX = cursorX;
+			oldCursorY = cursorY;
+			
 			if (cursorY < lines.size() - 1) {
 				cursorY++;
 				if (uncappedCursorX == -1) {
@@ -149,18 +173,27 @@ public class TextArea extends Tab {
 				} else {
 					cursorX = uncappedCursorX;
 				}
-				tmpCursorX = cursorX;
+				
 				resetCursor(false);
+				updateSelection(e, oldCursorX, oldCursorY);
 			}
 			break;
 		case END:
+			oldCursorX = cursorX;
+			oldCursorY = cursorY;
+			
 			if (e.isControlDown()) {
 				cursorY = lines.size() - 1;
 			}
 			cursorX = lines.get(cursorY).raw.length();
+			
 			resetCursor(true);
+			updateSelection(e, oldCursorX, oldCursorY);
 			break;
 		case HOME:
+			oldCursorX = cursorX;
+			oldCursorY = cursorY;
+			
 			if (e.isControlDown()) {
 				cursorY = 0;
 				cursorX = 0;
@@ -172,44 +205,58 @@ public class TextArea extends Tab {
 					cursorX = indentation;
 				}
 			}
+			
 			resetCursor(true);
+			updateSelection(e, oldCursorX, oldCursorY);
 			break;
 		case BACK_SPACE:
-			if (cursorX > 0) {
-				if (e.isControlDown()) {
-					int len = getPreviousWordSpan(cursorX, cursorY);
-					for (int i = 0; i < len; i++) {
+			if (selection == null) {
+				if (cursorX > 0) {
+					if (e.isControlDown()) {
+						int len = getPreviousWordSpan(cursorX, cursorY);
+						for (int i = 0; i < len; i++) {
+							deleteCharacter(cursorX - 1, cursorY);
+							cursorX--;
+						}
+					} else {
 						deleteCharacter(cursorX - 1, cursorY);
 						cursorX--;
 					}
-				} else {
-					deleteCharacter(cursorX - 1, cursorY);
-					cursorX--;
+				} else if (cursorY > 0) {
+					cursorX = lines.get(cursorY - 1).raw.length();
+					cursorY--;
+					tmpCursorX = cursorX;
+					joinLines(cursorY, cursorY + 1);
 				}
-			} else if (cursorY > 0) {
-				cursorX = lines.get(cursorY - 1).raw.length();
-				cursorY--;
-				tmpCursorX = cursorX;
-				joinLines(cursorY, cursorY + 1);
+			} else {
+				deleteSelection();
 			}
 			resetCursor(true);
 			break;
 		case DELETE:
-			if (cursorX < lines.get(cursorY).raw.length() - 1) {
-				if (e.isControlDown()) {
-					int len = getNextWordSpan(cursorX, cursorY);
-					for (int i = 0; i < len; i++) {
+			if (selection == null) {
+				if (cursorX < lines.get(cursorY).raw.length() - 1) {
+					if (e.isControlDown()) {
+						int len = getNextWordSpan(cursorX, cursorY);
+						for (int i = 0; i < len; i++) {
+							deleteCharacter(cursorX, cursorY);
+						}
+					} else {
 						deleteCharacter(cursorX, cursorY);
 					}
-				} else {
-					deleteCharacter(cursorX, cursorY);
+				} else if (cursorY < lines.size() - 1) {
+					joinLines(cursorY, cursorY + 1);
 				}
-			} else if (cursorY < lines.size() - 1) {
-				joinLines(cursorY, cursorY + 1);
+			} else {
+				deleteSelection();
 			}
 			resetCursor(true);
 			break;
 		case ENTER:
+			if (selection != null) {
+				deleteSelection();
+			}
+			
 			int indentation = getIndentation(cursorY);
 			if (cursorX == lines.get(cursorY).raw.length()) {
 				insertLine(cursorY + 1, createString(' ', indentation));
@@ -228,6 +275,10 @@ public class TextArea extends Tab {
 			resetCursor(true);
 			break;
 		case TAB:
+			if (selection != null) {
+				deleteSelection();
+			}
+			
 			for (int i = 0; i < TAB_SIZE; i++) {
 				insertCharacter(cursorX + i, cursorY, " ");
 			}
@@ -235,13 +286,33 @@ public class TextArea extends Tab {
 			resetCursor(true);
 			break;
 		case D:
-			if (e.isControlDown()) {
-				if (cursorY < lines.size() - 1) {
-					deleteLine(cursorY);
-				} else {
-					lines.get(cursorY).setLine("");
+			if (selection == null) {
+				if (e.isControlDown()) {
+					if (cursorY < lines.size() - 1) {
+						deleteLine(cursorY);
+					} else {
+						lines.get(cursorY).setLine("");
+					}
+					cursorX = 0;
+					resetCursor(true);
 				}
-				cursorX = 0;
+			} else {
+				deleteSelection();
+			}
+			break;
+		case A:
+			if (e.isControlDown()) {
+				if (selection == null) {
+					selection = new Selection();
+				}
+				selection.startX = 0;
+				selection.startY = 0;
+				selection.endX = lines.get(lines.size() - 1).raw.length();
+				selection.endY = lines.size() - 1;
+				
+				cursorX = lines.get(lines.size() - 1).raw.length();
+				cursorY = lines.size() - 1;
+				
 				resetCursor(true);
 			}
 			break;
@@ -263,6 +334,22 @@ public class TextArea extends Tab {
 			str.append(c);
 		}
 		return str.toString();
+	}
+	
+	private void updateSelection(KeyEvent e, int oldCursorX, int oldCursorY) {
+		if (e.isShiftDown()) {
+			if (oldCursorX != cursorX || oldCursorY != cursorY) {
+				if (selection == null) {
+					selection = new Selection();
+					selection.startX = oldCursorX;
+					selection.startY = oldCursorY;
+				}
+				selection.endX = cursorX;
+				selection.endY = cursorY;
+			}
+		} else {
+			selection = null;
+		}
 	}
 	
 	private void resetCursor(boolean capCursor) {
@@ -302,6 +389,47 @@ public class TextArea extends Tab {
 		return y * FONT_SIZE + FONT_SIZE;
 	}
 	
+	private void deleteSelection() {
+		//		int yy = 0;
+		//		for (int y = selection.getStartY(); y <= selection.getEndY(); y++) {
+		//			if (y > selection.getStartY() && y < selection.getEndY()) {
+		//				deleteLine(y + yy);
+		//			} else if (y == selection.getStartY()) {
+		//				int selectionStart = selection.getStartX();
+		//				int selectionEnd = y == selection.getEndY() ? selection.getEndX() : lines.get(y).raw.length();
+		//				for (int x = 0; x < selectionEnd - selectionStart; x++) {
+		//					deleteCharacter(selectionStart, y);
+		//				}
+		//				if (y < selection.getEndY()) {
+		//					joinLines(y + yy, y + yy + 1);
+		//					//deleteLine(y + yy);
+		//				} else {
+		//					yy++;
+		//				}
+		//			} else if (y == selection.getEndY()) {
+		//				int selectionStart = 0;
+		//				int selectionEnd = selection.getEndX();
+		//				for (int x = 0; x < selectionEnd - selectionStart; x++) {
+		//					deleteCharacter(selectionStart, y);
+		//				}
+		//				yy++;
+		//			}
+		//		}
+		
+		String firstLineBegin = lines.get(selection.getStartY()).raw.substring(0, selection.getStartX());
+		String firstLineEnd = lines.get(selection.getEndY()).raw.substring(selection.getEndX());
+		lines.get(selection.getStartY()).setLine(firstLineBegin + firstLineEnd);
+		
+		for (int y = selection.getStartY() + 1; y <= selection.getEndY(); y++) {
+			deleteLine(selection.getStartY() + 1);
+		}
+		
+		cursorX = selection.getStartX();
+		cursorY = selection.getStartY();
+		
+		selection = null;
+	}
+	
 	private void insertLine(int y, String text) {
 		lines.add(y, new Line(this, text));
 		notifyChanged();
@@ -328,8 +456,10 @@ public class TextArea extends Tab {
 	}
 	
 	private void deleteLine(int y) {
+		if (y < lines.size() - 1) {
+			lines.get(y + 1).offset += lines.get(y + 1).offset + 1.0;
+		}
 		lines.remove(y);
-		lines.get(y).offset = 1.0;
 		notifyChanged();
 	}
 	
@@ -527,12 +657,39 @@ public class TextArea extends Tab {
 			g.setFill(linenumberColor);
 			g.fillText(linenumberString, linenumbersWidthPixels - getWordLengthPixels(g.getFont(), linenumberString) - getWordLengthPixels(g.getFont(), " "), y);
 			
+			if (selection != null && selection.getStartY() <= i && selection.getEndY() >= i) {
+				int selectionStartX = -1, selectionWidth = -1;
+				
+				if (selection.getStartY() < i) {
+					selectionStartX = 0;
+				} else if (selection.getStartY() == i) {
+					selectionStartX = getWordLengthPixels(g.getFont(), lines.get(i).raw.substring(0, selection.getStartX()));
+				}
+				
+				if (selection.getEndY() > i) {
+					selectionWidth = getWordLengthPixels(g.getFont(), lines.get(i).raw) - selectionStartX;
+				} else if (selection.getEndY() == i) {
+					selectionWidth = getWordLengthPixels(g.getFont(), lines.get(i).raw.substring(0, selection.getEndX())) - selectionStartX;
+				}
+				
+				if (i < selection.getEndY()) {
+					selectionWidth = Math.max(selectionWidth, MIN_SELECTION_WIDTH);
+				}
+				
+				if (selectionStartX != -1 && selectionWidth != -1) {
+					g.setFill(getColor(SELECTION_COLOR));
+					//g.fillRect(x + selectionStartX, y - FONT_SIZE * 13 / 16, selectionWidth, FONT_SIZE);
+					g.fillRoundRect(x + selectionStartX, y - FONT_SIZE * 13 / 16, selectionWidth, FONT_SIZE, 5, 5);
+				}
+			}
+			
 			for (int j = 0; j < lines.get(i).tokens.size(); j++) {
 				String str = lines.get(i).tokens.get(j).str;
 				String type = lines.get(i).tokens.get(j).type;
-				int color = type == null ? highlighter.getDefaultColor() : highlighter.getColor(type);
 				
+				int color = type == null ? highlighter.getDefaultColor() : highlighter.getColor(type);
 				Color fillColor = Color.rgb((color & 0xFF0000) >> 16, (color & 0x00FF00) >> 8, (color & 0x0000FF) >> 0);
+				
 				g.setFill(fillColor);
 				g.fillText(str, x, y);
 				

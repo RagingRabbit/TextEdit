@@ -1,0 +1,39 @@
+********  TODO LIST  ********
+
+
+- syntax highlighting:
+    fix strings,                                                        DONE
+    comments,                                                           DONE
+    basic types,                                                        DONE
+    preprocessor,                                                       DONE
+    add highlighter object that adds regexes,                           DONE
+    make tokenizer only generate token types instead of colors          DONE
+- command line                                                          DONE
+- settings files                                                        DONE
+- default tab with instructions
+- file explorer
+- file watcher
+- task system                                                           DONE
+- rainbow brackets
+- line highlighting                                                     DONE
+- optimize tokenizer (get rid of if statements)                         DONE
+- add syntax mode and filename with status to statusbar                 DONE
+- finish c++ keywords                                                   DONE
+- split screen
+- make whitespaces brighter than background
+- multiline comment highlighting
+- command line args                                                     DONE
+- command input suggestions
+- tab support
+- settings:
+    command input symbol
+	tab size
+- undo, redo
+- recent commands
+- selection, block selection
+- multiple cursors
+- fix bug where font size is incorrect
+- fix bug where keyboard input is not recognized
+
+- outsource tokenizer and highlighter to files
+- add more font options to highlighter
