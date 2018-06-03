@@ -5,6 +5,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -19,6 +20,7 @@ import com.rb.edit.highlighting.lang.Cs.CsTokenizer;
 import javafx.geometry.Bounds;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
+import javafx.scene.control.Tab;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.ScrollEvent;
 import javafx.scene.paint.Color;
@@ -26,20 +28,33 @@ import javafx.scene.text.Font;
 import javafx.scene.text.FontPosture;
 import javafx.scene.text.FontWeight;
 import javafx.scene.text.Text;
+import javafx.stage.FileChooser;
 
-public class TextArea extends Canvas {
-	private static final String	FONT_FACE			= "Consolas";
-	private static final int	FONT_SIZE			= 13;
+public class TextArea extends Tab {
+	private static final String	FONT_FACE				= "Consolas";
+	private static final int	FONT_SIZE				= 13;
 	
-	private static final int	BACKGROUND_COLOR	= 0x1C1F22;
+	private static final int	BACKGROUND_COLOR		= 0x1C1F22;
+	private static final int	CURSOR_COLOR			= 0xffffff;
 	
-	private static final int	LINE_NUMBERS_WIDTH	= 6;
-	private static final int	LINE_NUMBERS_COLOR	= 0xffffff;
+	private static final int	LINE_NUMBERS_WIDTH		= 6;
+	private static final int	LINE_NUMBERS_COLOR		= 0xffffff;
+	
+	private static final int	PADDING_TOP				= 5;
+	
+	private static final double	SCROLL_LERP_SPEED		= 20.0;
+	private static final double	SCROLL_CTRL_MULTIPLIER	= 5.0;
+	private static final double	CURSOR_LERP_SPEED		= 50.0;
+	private static final double	LINE_DELETE_LERP_SPEED	= 150.0;
+	
+	private static final int	TAB_SIZE				= 4;
 	
 	
-	private FileTab				tab;
+	private EditorView			view;
+	private Canvas				canvas;
 	
 	private File				file;
+	private boolean				changed;
 	
 	private List<Line>			lines;
 	private Tokenizer			tokenizer;
@@ -47,26 +62,41 @@ public class TextArea extends Canvas {
 	
 	private int					cursorX, cursorY;
 	private int					uncappedCursorX;
+	private double				tmpCursorX;
 	private long				lastFrame;
 	private long				cursorTimer;
 	
-	private double				scrollX, scrollY;
+	private double				dt;
+	
+	private double				scrollY;
+	private double				destScrollY;
 	
 	
-	public TextArea(FileTab tab, File file, double width, double height) {
-		super(width, height);
-		this.tab = tab;
-		this.file = file;
+	public TextArea(EditorView view, File file, double width, double height) {
+		this.view = view;
+		this.canvas = new Canvas(width, height);
 		this.lines = new ArrayList<Line>();
+		this.file = file;
 		
-		if (file != null) {
-			loadFile();
-		}
+		updateTitle();
+		loadFile();
 		
 		this.tokenizer = tokenizer == null ? new DefaultTokenizer() : tokenizer;
 		this.highlighter = highlighter == null ? new DefaultHighlighter() : highlighter;
 		
 		uncappedCursorX = -1;
+		
+		setContent(canvas);
+	}
+	
+	private void updateTitle() {
+		if (file == null) {
+			setText("untitled" + (changed ? "*" : ""));
+		} else {
+			String[] path = file.getAbsolutePath().split("\\\\");
+			String filename = path[path.length - 1];
+			setText(filename + (changed ? "*" : ""));
+		}
 	}
 	
 	void onKeyPress(KeyEvent e) {
@@ -81,6 +111,7 @@ public class TextArea extends Canvas {
 			} else if (cursorY > 0) {
 				cursorY--;
 				cursorX = lines.get(cursorY).raw.length();
+				tmpCursorX = cursorX;
 			}
 			resetCursor(true);
 			break;
@@ -94,6 +125,7 @@ public class TextArea extends Canvas {
 			} else if (cursorY < lines.size() - 1) {
 				cursorY++;
 				cursorX = 0;
+				tmpCursorX = cursorX;
 			}
 			resetCursor(true);
 			break;
@@ -105,6 +137,7 @@ public class TextArea extends Canvas {
 				} else {
 					cursorX = uncappedCursorX;
 				}
+				tmpCursorX = cursorX;
 				resetCursor(false);
 			}
 			break;
@@ -116,8 +149,30 @@ public class TextArea extends Canvas {
 				} else {
 					cursorX = uncappedCursorX;
 				}
+				tmpCursorX = cursorX;
 				resetCursor(false);
 			}
+			break;
+		case END:
+			if (e.isControlDown()) {
+				cursorY = lines.size() - 1;
+			}
+			cursorX = lines.get(cursorY).raw.length();
+			resetCursor(true);
+			break;
+		case HOME:
+			if (e.isControlDown()) {
+				cursorY = 0;
+				cursorX = 0;
+			} else {
+				int indentation = getIndentation(cursorY);
+				if (cursorX == indentation) {
+					cursorX = 0;
+				} else {
+					cursorX = indentation;
+				}
+			}
+			resetCursor(true);
 			break;
 		case BACK_SPACE:
 			if (cursorX > 0) {
@@ -134,41 +189,93 @@ public class TextArea extends Canvas {
 			} else if (cursorY > 0) {
 				cursorX = lines.get(cursorY - 1).raw.length();
 				cursorY--;
+				tmpCursorX = cursorX;
+				joinLines(cursorY, cursorY + 1);
+			}
+			resetCursor(true);
+			break;
+		case DELETE:
+			if (cursorX < lines.get(cursorY).raw.length() - 1) {
+				if (e.isControlDown()) {
+					int len = getNextWordSpan(cursorX, cursorY);
+					for (int i = 0; i < len; i++) {
+						deleteCharacter(cursorX, cursorY);
+					}
+				} else {
+					deleteCharacter(cursorX, cursorY);
+				}
+			} else if (cursorY < lines.size() - 1) {
 				joinLines(cursorY, cursorY + 1);
 			}
 			resetCursor(true);
 			break;
 		case ENTER:
+			int indentation = getIndentation(cursorY);
 			if (cursorX == lines.get(cursorY).raw.length()) {
-				insertLine(cursorY + 1, "");
+				insertLine(cursorY + 1, createString(' ', indentation));
 				cursorY++;
-				cursorX = 0;
+				cursorX = indentation;
+				tmpCursorX = cursorX;
 			} else {
 				String thisLine = lines.get(cursorY).raw.substring(0, cursorX);
 				String nextLine = lines.get(cursorY).raw.substring(cursorX);
 				lines.get(cursorY).setLine(thisLine);
-				insertLine(cursorY + 1, nextLine);
+				insertLine(cursorY + 1, createString(' ', indentation) + nextLine);
 				cursorY++;
+				cursorX = indentation;
+				tmpCursorX = cursorX;
+			}
+			resetCursor(true);
+			break;
+		case TAB:
+			for (int i = 0; i < TAB_SIZE; i++) {
+				insertCharacter(cursorX + i, cursorY, " ");
+			}
+			cursorX += TAB_SIZE;
+			resetCursor(true);
+			break;
+		case D:
+			if (e.isControlDown()) {
+				if (cursorY < lines.size() - 1) {
+					deleteLine(cursorY);
+				} else {
+					lines.get(cursorY).setLine("");
+				}
 				cursorX = 0;
+				resetCursor(true);
 			}
-			resetCursor(true);
 			break;
-		case END:
+		case S:
 			if (e.isControlDown()) {
-				cursorY = lines.size() - 1;
+				saveFile(e.isShiftDown());
+				notifySaved();
+				updateTitle();
 			}
-			cursorX = lines.get(cursorY).raw.length();
-			resetCursor(true);
-			break;
-		case HOME:
-			if (e.isControlDown()) {
-				cursorY = 0;
-			}
-			cursorX = 0;
-			resetCursor(true);
 			break;
 		default:
 			break;
+		}
+	}
+	
+	private String createString(char c, int n) {
+		StringBuilder str = new StringBuilder();
+		for (int i = 0; i < n; i++) {
+			str.append(c);
+		}
+		return str.toString();
+	}
+	
+	private void resetCursor(boolean capCursor) {
+		cursorX = Math.min(lines.get(cursorY).raw.length(), cursorX);
+		cursorTimer = 0;
+		if (getLineYPixels(cursorY - 1) - (int) scrollY < 0) {
+			destScrollY = getLineYPixels(cursorY - 1);
+		}
+		if (getLineYPixels(cursorY + 1) - (int) scrollY > canvas.getHeight()) {
+			destScrollY = getLineYPixels(cursorY + 1) - canvas.getHeight() + PADDING_TOP;
+		}
+		if (capCursor) {
+			uncappedCursorX = -1;
 		}
 	}
 	
@@ -176,40 +283,54 @@ public class TextArea extends Canvas {
 		if (e.getCharacter().length() > 0 && !Character.isISOControl(e.getCharacter().toCharArray()[0])) {
 			insertCharacter(cursorX, cursorY, e.getCharacter());
 			cursorX++;
+			resetCursor(true);
 		}
 	}
 	
 	void onScroll(ScrollEvent e) {
-		scrollY += e.getDeltaY();
+		destScrollY -= e.getDeltaY() * (e.isControlDown() ? SCROLL_CTRL_MULTIPLIER : 1.0);
+		destScrollY = Math.max(destScrollY, 0.0);
+		destScrollY = Math.min(destScrollY, getLineYPixels(lines.size() - 2));
+	}
+	
+	void onResize(double w, double h) {
+		canvas.setWidth(w);
+		canvas.setHeight(h);
+	}
+	
+	private int getLineYPixels(int y) {
+		return y * FONT_SIZE + FONT_SIZE;
 	}
 	
 	private void insertLine(int y, String text) {
 		lines.add(y, new Line(this, text));
+		notifyChanged();
 	}
 	
 	private void joinLines(int first, int second) {
 		lines.get(first).setLine(lines.get(first).raw + lines.get(second).raw);
 		lines.remove(second);
+		notifyChanged();
 	}
 	
 	private void insertCharacter(int x, int y, String chars) {
 		String line = lines.get(y).raw;
 		String newLine = line.substring(0, x) + chars + line.substring(x);
 		lines.get(y).setLine(newLine);
+		notifyChanged();
 	}
 	
 	private void deleteCharacter(int x, int y) {
 		String line = lines.get(y).raw;
 		String newLine = line.substring(0, x) + line.substring(x + 1);
 		lines.get(y).setLine(newLine);
+		notifyChanged();
 	}
 	
-	private void resetCursor(boolean capCursor) {
-		cursorX = Math.min(lines.get(cursorY).raw.length(), cursorX);
-		cursorTimer = 0;
-		if (capCursor) {
-			uncappedCursorX = -1;
-		}
+	private void deleteLine(int y) {
+		lines.remove(y);
+		lines.get(y).offset = 1.0;
+		notifyChanged();
 	}
 	
 	private int getNextWordSpan(int x, int y) {
@@ -241,19 +362,43 @@ public class TextArea extends Canvas {
 				spaces = false;
 			}
 		} while (spaces ? lines.get(y).raw.charAt(i) == ' ' : (isLetterOrDigit(lines.get(y).raw.charAt(i))));
-		
-		if (i < start - 1) {
+		if (!spaces && i > 0) {
 			i++;
 		}
+		i = Math.min(i, start - 1);
 		
 		return start - i;
+	}
+	
+	private int getIndentation(int y) {
+		char[] lineChars = lines.get(y).raw.toCharArray();
+		for (int i = 0; i < lineChars.length; i++) {
+			if (lineChars[i] != ' ') {
+				return i;
+			}
+		}
+		return lineChars.length;
 	}
 	
 	private boolean isLetterOrDigit(char c) {
 		return Character.isLetter(c) || Character.isDigit(c);
 	}
 	
+	private void notifyChanged() {
+		changed = true;
+		updateTitle();
+	}
+	
+	private void notifySaved() {
+		changed = false;
+		updateTitle();
+	}
+	
 	private void loadFile() {
+		if (file == null) {
+			return;
+		}
+		
 		lines.clear();
 		
 		try {
@@ -296,59 +441,133 @@ public class TextArea extends Canvas {
 		}
 	}
 	
+	private void saveFile(boolean saveDialog) {
+		File dest = null;
+		if (file == null || saveDialog) {
+			FileChooser fileChooser = new FileChooser();
+			if (file != null) {
+				fileChooser.setInitialDirectory(file.getParentFile());
+				fileChooser.setInitialFileName(file.getName());
+			}
+			dest = fileChooser.showSaveDialog(null);
+			file = dest;
+		} else {
+			dest = file;
+		}
+		
+		writeToFile(dest);
+	}
+	
+	private void writeToFile(File dest) {
+		if (!dest.exists()) {
+			try {
+				dest.createNewFile();
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
+		try (PrintWriter out = new PrintWriter(dest)) {
+			for (Line line : lines) {
+				out.println(line.raw);
+			}
+		} catch (FileNotFoundException e) {
+			e.printStackTrace();
+		}
+	}
+	
+	public File getFile() {
+		return file;
+	}
+	
 	public void update() {
 		long now = System.currentTimeMillis();
-		cursorTimer += (now - lastFrame);
+		long delta = now - lastFrame;
+		dt = delta / 1000.0;
 		lastFrame = now;
-		tab.getView().requestLayout();
+		
+		cursorTimer += delta;
+		
+		scrollY = lerp(scrollY, destScrollY, SCROLL_LERP_SPEED * dt);
+		tmpCursorX = lerp(tmpCursorX, cursorX, CURSOR_LERP_SPEED * dt);
+		
+		view.requestLayout();
+	}
+	
+	private double lerp(double d0, double d1, double blend) {
+		return d0 + (d1 - d0) * blend;
 	}
 	
 	public void draw() {
-		GraphicsContext g = getGraphicsContext2D();
+		GraphicsContext g = canvas.getGraphicsContext2D();
 		
-		g.setFill(Color.web("#" + Integer.toHexString(BACKGROUND_COLOR)));
-		g.fillRect(0, 0, getWidth(), getHeight());
+		g.setFill(Color.rgb((BACKGROUND_COLOR & 0xFF0000) >> 16, (BACKGROUND_COLOR & 0x00FF00) >> 8, (BACKGROUND_COLOR & 0x0000FF) >> 0));
+		g.fillRect(0, 0, canvas.getWidth(), canvas.getHeight());
 		g.setFont(Font.font(FONT_FACE, FontWeight.BLACK, FontPosture.REGULAR, FONT_SIZE));
 		
 		boolean cursorActive = cursorTimer % 1000 < 500;
 		
 		int linenumbersWidthPixels = getWordLengthPixels(g.getFont(), " ") * LINE_NUMBERS_WIDTH;
+		int y = FONT_SIZE - (int) scrollY + PADDING_TOP;
 		
 		for (int i = 0; i < lines.size(); i++) {
 			int x = linenumbersWidthPixels;
-			int length = 0;
 			
-			int yy = i * FONT_SIZE + FONT_SIZE + (int) scrollY;
-			if (yy > getHeight()) {
+			y += lines.get(i).offset * FONT_SIZE;
+			if (y < 0) {
+				y += FONT_SIZE;
+				continue;
+			}
+			if (y > canvas.getHeight() + g.getFont().getSize()) {
 				i = lines.size();
 				break;
 			}
 			
-			Color linenumberColor = Color.rgb((LINE_NUMBERS_COLOR & 0xFF0000) >> 16, (LINE_NUMBERS_COLOR & 0x00FF00) >> 8, (LINE_NUMBERS_COLOR & 0x0000FF) >> 0);
+			Color linenumberColor = getColor(LINE_NUMBERS_COLOR);
 			String linenumberString = Integer.toString(i + 1);
 			g.setFill(linenumberColor);
-			g.fillText(linenumberString, linenumbersWidthPixels - getWordLengthPixels(g.getFont(), linenumberString) - getWordLengthPixels(g.getFont(), " "), yy);
+			g.fillText(linenumberString, linenumbersWidthPixels - getWordLengthPixels(g.getFont(), linenumberString) - getWordLengthPixels(g.getFont(), " "), y);
 			
 			for (int j = 0; j < lines.get(i).tokens.size(); j++) {
-				String line = lines.get(i).tokens.get(j).str;
+				String str = lines.get(i).tokens.get(j).str;
 				String type = lines.get(i).tokens.get(j).type;
 				int color = type == null ? highlighter.getDefaultColor() : highlighter.getColor(type);
 				
 				Color fillColor = Color.rgb((color & 0xFF0000) >> 16, (color & 0x00FF00) >> 8, (color & 0x0000FF) >> 0);
 				g.setFill(fillColor);
-				g.fillText(line, x, yy);
+				g.fillText(str, x, y);
 				
-				int tokenLengthPixels = getWordLengthPixels(g.getFont(), line);
-				if (cursorActive && i == cursorY && length <= cursorX && length + line.length() >= cursorX) {
-					g.setFill(Color.WHITE);
-					g.fillText("|", x + getWordLengthPixels(g.getFont(), line.substring(0, cursorX - length)) - 2, yy);
-					g.fillText("|", x + getWordLengthPixels(g.getFont(), line.substring(0, cursorX - length)) - 3, yy);
-				}
-				
+				int tokenLengthPixels = getWordLengthPixels(g.getFont(), str);
 				x += tokenLengthPixels;
-				length += line.length();
 			}
+			if (lines.get(i).offset > 0.001) {
+				lines.get(i).offset = lerp(lines.get(i).offset, 0.0, LINE_DELETE_LERP_SPEED * dt);
+				if (lines.get(i).offset < 0.001) {
+					lines.get(i).offset = 0.0;
+				}
+			}
+			
+			if (cursorActive && i == cursorY) {
+				g.setFill(getColor(CURSOR_COLOR));
+				double lengthPixels = getWordLengthPixels(g.getFont(), " ") * tmpCursorX;
+				lengthPixels = getWordLengthPixels(g.getFont(), lines.get(i).raw.substring(0, Math.min(lines.get(i).raw.length(), cursorX)))
+						+ getWordLengthPixels(g.getFont(), " ") * (tmpCursorX - cursorX);
+				//lengthPixels = getWordLengthPixels(g.getFont(), lines.get(i).raw.substring(0, Math.min(lines.get(i).raw.length(), (int) Math.floor(tmpCursorX))))
+				//		+ getWordLengthPixels(g.getFont(), " ") * (tmpCursorX - (int) Math.floor(tmpCursorX));
+				//System.out.println(getWordLengthPixels(g.getFont(), lines.get(i).raw.substring(0, Math.min(lines.get(i).raw.length(), (int) Math.floor(tmpCursorX))))
+				//		+ getWordLengthPixels(g.getFont(), " ") * (tmpCursorX - (int) Math.floor(tmpCursorX)));
+				g.fillText("|", linenumbersWidthPixels + lengthPixels - 1, y);
+				g.fillText("|", linenumbersWidthPixels + lengthPixels - 2, y);
+			}
+			
+			y += FONT_SIZE;
 		}
+		
+		g.setFill(Color.rgb((BACKGROUND_COLOR & 0xFF0000) >> 16, (BACKGROUND_COLOR & 0x00FF00) >> 8, (BACKGROUND_COLOR & 0x0000FF) >> 0));
+		g.fillRect(0, 0, canvas.getWidth(), PADDING_TOP);
+	}
+	
+	private Color getColor(int hex) {
+		return Color.rgb((hex & 0xFF0000) >> 16, (hex & 0x00FF00) >> 8, (hex & 0x0000FF) >> 0);
 	}
 	
 	private int getWordLengthPixels(Font font, String str) {
@@ -360,12 +579,14 @@ public class TextArea extends Canvas {
 	
 	private static class Line {
 		private TextArea	area;
+		private double		offset;
 		private String		raw;
 		private List<Token>	tokens;
 		
 		
 		private Line(TextArea area, String line) {
 			this.area = area;
+			offset = 0.0;
 			tokens = new ArrayList<Token>();
 			setLine(line);
 		}

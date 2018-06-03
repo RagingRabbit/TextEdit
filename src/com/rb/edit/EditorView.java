@@ -1,7 +1,9 @@
 package com.rb.edit;
 
 import java.io.File;
+import java.util.List;
 
+import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TabPane.TabClosingPolicy;
 import javafx.scene.input.KeyEvent;
@@ -33,6 +35,16 @@ public class EditorView extends Pane {
 		tabPane.setOnScroll(e -> {
 			onScroll(e);
 		});
+		Main.instance.getScene().widthProperty().addListener(e -> {
+			for (Tab tab : tabPane.getTabs()) {
+				((TextArea) tab).onResize(Main.instance.getScene().getWidth(), Main.instance.getScene().getHeight() - 32);
+			}
+		});
+		Main.instance.getScene().heightProperty().addListener(e -> {
+			for (Tab tab : tabPane.getTabs()) {
+				((TextArea) tab).onResize(Main.instance.getScene().getWidth(), Main.instance.getScene().getHeight() - 32);
+			}
+		});
 		getChildren().add(tabPane);
 		
 		openTab(null);
@@ -41,7 +53,7 @@ public class EditorView extends Pane {
 	}
 	
 	public void openTab(File file) {
-		FileTab newTab = new FileTab(this, file, 1920, 1050);
+		TextArea newTab = new TextArea(this, file, Main.getWidth(), Main.getHeight() - 32);
 		tabPane.getTabs().add(newTab);
 		tabPane.getSelectionModel().select(tabPane.getTabs().size() - 1);
 		selectedTab = tabPane.getTabs().size() - 1;
@@ -58,8 +70,13 @@ public class EditorView extends Pane {
 	
 	public void openFile() {
 		FileChooser fileChooser = new FileChooser();
-		File result = fileChooser.showOpenDialog(null);
-		openTab(result);
+		fileChooser.setInitialDirectory(getSelectedTab().getFile().getAbsoluteFile().getParentFile());
+		List<File> results = fileChooser.showOpenMultipleDialog(null);
+		if (results != null && !results.isEmpty()) {
+			for (File file : results) {
+				openTab(file);
+			}
+		}
 	}
 	
 	public void selectTab(int index) {
@@ -73,16 +90,16 @@ public class EditorView extends Pane {
 	}
 	
 	public void closeCurrentTab() {
-		closeTab(getCurrentTab());
+		closeTab(selectedTab);
 	}
 	
-	public int getCurrentTab() {
-		return tabPane.getSelectionModel().getSelectedIndex();
+	public TextArea getSelectedTab() {
+		return (TextArea) tabPane.getTabs().get(selectedTab);
 	}
 	
 	public void update() {
 		if (tabPane.getTabs().size() > 0) {
-			((FileTab) tabPane.getTabs().get(tabPane.getSelectionModel().getSelectedIndex())).update();
+			((TextArea) tabPane.getTabs().get(tabPane.getSelectionModel().getSelectedIndex())).update();
 		}
 	}
 	
@@ -91,7 +108,7 @@ public class EditorView extends Pane {
 		super.layoutChildren();
 		
 		if (!tabPane.getTabs().isEmpty()) {
-			((FileTab) tabPane.getTabs().get(tabPane.getSelectionModel().getSelectedIndex())).draw();
+			((TextArea) tabPane.getTabs().get(tabPane.getSelectionModel().getSelectedIndex())).draw();
 		}
 	}
 	
@@ -123,7 +140,7 @@ public class EditorView extends Pane {
 			}
 		default:
 			if (!tabPane.getTabs().isEmpty()) {
-				((FileTab) tabPane.getTabs().get(tabPane.getSelectionModel().getSelectedIndex())).onKeyPress(e);
+				((TextArea) tabPane.getTabs().get(tabPane.getSelectionModel().getSelectedIndex())).onKeyPress(e);
 			}
 			break;
 		}
@@ -131,13 +148,13 @@ public class EditorView extends Pane {
 	
 	void onKeyTyped(KeyEvent e) {
 		if (!tabPane.getTabs().isEmpty()) {
-			((FileTab) tabPane.getTabs().get(tabPane.getSelectionModel().getSelectedIndex())).onKeyTyped(e);
+			((TextArea) tabPane.getTabs().get(tabPane.getSelectionModel().getSelectedIndex())).onKeyTyped(e);
 		}
 	}
 	
 	void onScroll(ScrollEvent e) {
 		if (!tabPane.getTabs().isEmpty()) {
-			((FileTab) tabPane.getTabs().get(tabPane.getSelectionModel().getSelectedIndex())).onScroll(e);
+			((TextArea) tabPane.getTabs().get(tabPane.getSelectionModel().getSelectedIndex())).onScroll(e);
 		}
 	}
 }

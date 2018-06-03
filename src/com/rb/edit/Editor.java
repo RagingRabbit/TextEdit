@@ -13,10 +13,10 @@ public class Editor extends GridPane {
 	}
 	
 	
-	private Stage		stage;
-	private EditorView	view;
+	Stage			stage;
+	EditorView		view;
 	
-	private boolean		running;
+	private boolean	running;
 	
 	
 	public void init(Stage stage) {
